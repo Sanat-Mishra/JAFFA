@@ -86,7 +86,7 @@ exclude="NoSupport,PotentialReadThrough" //fusions marked with these classificat
 reassign_dist=0 //minimum distance between low-confidence fusion and others for it to be reassigned to another breakpoint.
 
 //mapping and counting the coverage
-mapParams="-k1 --no-mixed --no-discordant --mm"
+mapParams="-k 1 --no-mixed --no-discordant --mm"
 overHang=15 //how many bases are require on either side of a break to count the read.
 
 /********** Variables that shouldn't need to be changed ***********************/
@@ -141,10 +141,10 @@ run_check = {
 //that map to chrM, introns and intergenetic regions
 prepare_reads = {
     doc "Prepare reads"
-    output.dir=jaffa_output+branch
+    output.dir=jaffa_output+branch.name
     if (inputs.size() == 1) {  // single reads
-        produce(branch+"_filtered_reads.fastq.gz",
-                branch+"_leftover_reads.fastq.gz"){
+        produce(branch.name+"_filtered_reads.fastq.gz",
+                branch.name+"_leftover_reads.fastq.gz"){
 		// branch+".transCounts") {
             exec """
                 $trimmomatic SE -threads $threads -phred$scores $input.gz
@@ -164,10 +164,10 @@ prepare_reads = {
             ""","prepare_reads"
         }
     } else if (inputs.size() == 2) {  // paired reads
-        produce(branch+"_filtered_reads.fastq.1.gz",
-                branch+"_filtered_reads.fastq.2.gz",
-                branch+"_leftover_reads.fastq.1.gz",
-                branch+"_leftover_reads.fastq.2.gz") {
+        produce(branch.name+"_filtered_reads.fastq.1.gz",
+                branch.name+"_filtered_reads.fastq.2.gz",
+                branch.name+"_leftover_reads.fastq.1.gz",
+                branch.name+"_leftover_reads.fastq.2.gz") {
 		//branch+".transCounts") {
                 // need to check here for whether the files are zipped - FIX
                 //trim & fix the file names so Trinity handles the paired-ends reads correctly
@@ -226,8 +226,8 @@ cat_reads = {
 //Get read which either align discordantly or not at all
 get_unmapped = {
     doc "Get Unmapped"
-    output.dir=jaffa_output+branch
-    produce(branch+".fasta", branch+"_discordant_pairs.bam") {
+    output.dir=jaffa_output+branch.name
+    produce(branch.name+".fasta", branch.name+"_discordant_pairs.bam") {
         from("*_leftover_reads*.gz") {
             def input_string = ""
             if (inputs.size() == 1) {
@@ -255,8 +255,8 @@ get_unmapped = {
 //transcriptome as well as the reference
 get_assembly_unmapped = {
     doc "Get assembly unmapped"
-    output.dir=jaffa_output+branch
-    produce(branch+"-unmapped.fasta", branch+"_discordant_pairs.bam") {
+    output.dir=jaffa_output+branch.name
+    produce(branch.name+"-unmapped.fasta", branch.name+"_discordant_pairs.bam") {
         from("*_leftover_reads*.gz") {
             def input_string = ""
             if (inputs.size() == 1) {
@@ -286,8 +286,8 @@ get_assembly_unmapped = {
 //Run the de novo assembly
 run_assembly = {
     doc "Align transcripts to annotation"
-    output.dir=jaffa_output+branch
-    produce(branch+".fasta") {
+    output.dir=jaffa_output+branch.name
+    produce(branch.name+".fasta") {
         from("*_filtered_reads.fastq*gz") {
             exec """
                 time $oases_assembly_script $velveth $velvetg $oases
@@ -303,8 +303,8 @@ run_assembly = {
 //this ensures the pipelines are separated for the hybrid mode. 
 align_transcripts_to_annotation = {
     doc "Align transcripts to annotation"
-    output.dir=jaffa_output+branch
-    produce(branch+".paf") {
+    output.dir=jaffa_output+branch.name
+    produce(branch.name+".paf") {
         from(".fasta") {
             exec """
 		   time $blastn -db ${refBase}/${genome}_${annotation}_blast -query $input 
@@ -317,7 +317,7 @@ align_transcripts_to_annotation = {
 //Align the reads to the annotation 
 align_reads_to_annotation = {
     doc "Align reads to annotation"
-    output.dir=jaffa_output+branch
+    output.dir=jaffa_output+branch.name
     produce(input.prefix+".paf") {
         from(".fasta") {
             exec """
@@ -332,7 +332,7 @@ align_reads_to_annotation = {
 //parse the alignment table and filter for candidate fusions (now uses a c++ program from src/)
 filter_transcripts = {
     doc "Filter transcripts"
-    output.dir=jaffa_output+branch
+    output.dir=jaffa_output+branch.name
     produce(input.prefix+".txt"){ // ,branch+".geneCounts") {
         from(".paf") {
             exec """
@@ -348,7 +348,7 @@ filter_transcripts = {
 //Extract the fasta sequences for the candidate fusions into their own fasta file
 extract_fusion_sequences = {
     doc "Extract fusion sequences"
-    output.dir=jaffa_output+branch
+    output.dir=jaffa_output+branch.name
     produce(input.prefix+".fusions.fa") {
         from(".txt", ".fasta") {
             exec """
@@ -363,8 +363,8 @@ extract_fusion_sequences = {
 //Map the reads back to the candidate fusion sequences
 map_reads = {
     doc "Map reads back to the candidate fusion sequences"
-    output.dir=jaffa_output+branch
-    produce(branch+".sorted.bam") {
+    output.dir=jaffa_output+branch.name
+    produce(branch.name +".sorted.bam") {
         from("fusions.fa","*_filtered_reads*gz") {
             def input_string=""
             if (inputs.size() == 2) {
@@ -375,7 +375,7 @@ map_reads = {
             exec """
                 ${bowtie2}-build $input1 $input1.prefix ;
                 $bowtie2 $mapParams --no-unal -p $threads -x $input1.prefix $input_string | 
-                $samtools view -S -b - | $samtools sort - ${output.dir}/${branch}.sorted ;
+                $samtools view -S -b | $samtools sort -o ${output.dir}/${branch}.sorted.bam ;
                 $samtools index $output
             ""","map_reads"
         }
@@ -386,7 +386,7 @@ map_reads = {
 //Used for assembly mode
 get_spanning_reads = {
     doc "Calculate the number of reads which span the breakpoint of the fusions"
-    output.dir=jaffa_output+branch
+    output.dir=jaffa_output+branch.name
     produce(input.txt.prefix+".reads") {
        from("txt","bam") {
            exec """ 
@@ -404,7 +404,7 @@ get_spanning_reads = {
 //read and the spanning pairs will be 0. 
 make_simple_reads_table = {
     doc "Calculate the number of reads which span the breakpoint of the fusions"
-    output.dir=jaffa_output+branch
+    output.dir=jaffa_output+branch.name
     produce(input.txt.prefix+".reads") {
         from(".txt", "*_discordant_pairs.bam") {
 	   exec """
@@ -417,7 +417,7 @@ make_simple_reads_table = {
 
 make_fasta_reads_table = {
     doc "Make fasta reads table"
-    output.dir=jaffa_output+branch
+    output.dir=jaffa_output+branch.name
     produce(input.txt.prefix+".reads") {
         from("txt") {
             exec """
@@ -433,9 +433,9 @@ make_fasta_reads_table = {
 //It concatenates the fusions sequence files, then the read files.
 merge_assembly_and_unmapped_reads_candidates = {
     doc "Concatenate fusion sequence files and reads files (hybrid only)"
-    output.dir=jaffa_output+branch
-    produce(branch+".all.fusions.fa", branch+".all.reads") {
-        from("fusions.fa", branch+".fusions.fa", "reads", branch+".reads") {
+    output.dir=jaffa_output+branch.name
+    produce(branch.name+".all.fusions.fa", branch.name+".all.reads") {
+        from("fusions.fa", branch.name+".fusions.fa", "reads", branch.name+".reads") {
             exec """
                 cat $input1 $input2 > $output1 ;
                 cp $input3 $output2 ; tail -n+2 $input4 >> $output2
@@ -449,7 +449,7 @@ merge_assembly_and_unmapped_reads_candidates = {
 align_transcripts_to_genome = {
     doc "Align candidate fusions to the genome"
     output.dir=jaffa_output+branch
-    produce(branch+"_genome.psl") {
+    produce(branch.name+"_genome.psl") {
         from(".fusions.fa") {
             exec """
 	       if [ ! -s $input ]; then
@@ -465,8 +465,8 @@ align_transcripts_to_genome = {
 //Do a bit more filtering and compile the final filtered list (uses an R script)
 get_final_list = {
     doc "Get final list"
-    output.dir=jaffa_output+branch
-    produce(branch+".summary") {
+    output.dir=jaffa_output+branch.name
+    produce(branch.name+".summary") {
         from(".psl", ".reads") { //, ".geneCounts") {
             exec """
 	        if [ ! -s $input1 ] ; then
@@ -511,4 +511,3 @@ compile_all_results = {
         ""","compile_all_results"
     }
 }
-
