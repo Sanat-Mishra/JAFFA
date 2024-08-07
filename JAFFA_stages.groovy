@@ -47,7 +47,7 @@ genomeFasta=fastaBase+"/"+genome+".fa"  //genome sequence
 // Input pattern (see bpipe documentation for how files are grouped and split )
 // group on start, split on end. eg. on ReadsA_1.fastq.gz, ReadA_2.fastq.gz
 // this would group the read files into pairs like we want.
-fastqInputFormat="%_*.fastq.gz"
+fastqInputFormat="%fastq.gz"
 
 // Simlar to above for running JAFFA_direct with a fasta file.
 // You should not need to change this unless the suffix is ".fa" instead of ".fasta"
@@ -172,23 +172,30 @@ prepare_reads = {
                 // need to check here for whether the files are zipped - FIX
                 //trim & fix the file names so Trinity handles the paired-ends reads correctly
             exec """
-                $trimmomatic PE -threads $threads -phred$scores $input1 $input2
-                    ${output.dir}/tempp1.fq /dev/null
-                    ${output.dir}/tempp2.fq /dev/null
-                    LEADING:$minQScore TRAILING:$minQScore MINLEN:$minlen;
-                function fix_ids {
-                    cat \$1 |
-                    awk -v app=\$2
-                        'BEGIN{ i=0 }{
-                        if(i==0) print \$1 \"/\" app ;
-                        else print \$1 ;
-                        i++ ;
-                        if(i==4) i=0 }'
-                    2>/dev/null
-                ; } ;
-                fix_ids ${output.dir}/tempp1.fq 1 > ${output.dir}/${branch}_trim1.fastq ;
-                fix_ids ${output.dir}/tempp2.fq 2 > ${output.dir}/${branch}_trim2.fastq ;
-                rm ${output.dir}/tempp1.fq ${output.dir}/tempp2.fq ;
+                trimmomatic PE -threads $threads -phred$scores $input1 $input2 \
+    ${output_dir}/tempp1.fq /dev/null \
+    ${output_dir}/tempp2.fq /dev/null \
+    LEADING:$minQScore TRAILING:$minQScore MINLEN:$minlen
+            
+                fix_ids() {
+    cat "\$1" |
+    awk -v app="\$2" '
+        BEGIN { i = 0 }
+        {
+            if (i == 0) {
+                print \$1 "/" app
+            } else {
+                print
+            }
+            i++
+            if (i == 4) i = 0
+        }
+    ' 2>/dev/null
+}
+
+                fix_ids "${output_dir}/tempp1.fq" 1 > "${output_dir}/${branch}_trim1.fastq"
+                fix_ids "${output_dir}/tempp2.fq" 2 > "${output_dir}/${branch}_trim2.fastq"
+                rm "${output_dir}/tempp1.fq" "${output_dir}/tempp2.fq";
 
                 $bowtie2 $mapParams --very-fast 
                     --al-conc-gz ${output1.prefix.prefix}.gz
